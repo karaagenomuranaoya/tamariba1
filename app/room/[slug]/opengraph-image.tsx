@@ -21,10 +21,13 @@ type Props = {
 export default async function Image({ params }: Props) {
   const { slug } = await params;
 
-  // ★修正: こちらもCDNから直接取得
+  // ★修正: URLを正しいファイルパスに変更
   const fontData = await fetch(
-    new URL('https://unpkg.com/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-all-700-normal.woff', import.meta.url)
-  ).then((res) => res.arrayBuffer());
+    'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-japanese-700-normal.woff'
+  ).then((res) => {
+    if (!res.ok) throw new Error('Failed to fetch font');
+    return res.arrayBuffer();
+  });
 
   const { data } = await supabase
     .from('tm_rooms')

@@ -1,6 +1,5 @@
 import { ImageResponse } from 'next/og';
 
-// OGPのサイズ設定
 export const size = {
   width: 1200,
   height: 630,
@@ -9,11 +8,13 @@ export const size = {
 export const contentType = 'image/png';
 
 export default async function Image() {
-  // ★修正: Google FontsのCSS解析をやめて、CDNから直接フォントファイルを取得する
-  // Noto Sans JP Bold (Weight 700)
+  // ★修正: URLを正しいファイルパス（japaneseサブセット）に変更し、安定したJSDelivrを使用
   const fontData = await fetch(
-    new URL('https://unpkg.com/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-all-700-normal.woff', import.meta.url)
-  ).then((res) => res.arrayBuffer());
+    'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-japanese-700-normal.woff'
+  ).then((res) => {
+    if (!res.ok) throw new Error('Failed to fetch font');
+    return res.arrayBuffer();
+  });
 
   return new ImageResponse(
     (
