@@ -5,6 +5,7 @@
 ├── app
 │   ├── globals.css
 │   ├── layout.tsx
+│   ├── opengraph-image.jpeg
 │   ├── page.tsx
 │   └── room
 │       └── [slug]
