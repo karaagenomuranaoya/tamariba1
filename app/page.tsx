@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [roomName, setRoomName] = useState(''); // 追加: ルーム名用
+  const [roomName, setRoomName] = useState('');
 
   const generateSlug = () => {
     const chars = 'abcdefghijklmnopqrstuvwxyz';
@@ -26,7 +26,7 @@ export default function Home() {
       const slug = generateSlug();
       const ownerToken = uuidv4();
       
-      // 入力がなければデフォルト名
+      // デフォルト名は「たまりば」
       const finalName = roomName.trim() || 'たまりば';
 
       const { error } = await supabase
@@ -35,7 +35,7 @@ export default function Home() {
           { 
             slug: slug, 
             owner_token: ownerToken,
-            name: finalName // ここを追加
+            name: finalName
           }
         ]);
 
@@ -47,7 +47,9 @@ export default function Home() {
       }
 
       localStorage.setItem(`tamariba_owner_${slug}`, ownerToken);
-      router.push(`/room/${slug}`);
+      
+      // 作成直後であることを伝えるパラメータ(?created=true)をつけて遷移
+      router.push(`/room/${slug}?created=true`);
 
     } catch (err) {
       console.error(err);
@@ -67,7 +69,6 @@ export default function Home() {
         </div>
 
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-          {/* ここに入力欄を追加 */}
           <div>
             <label className="block text-left text-sm font-medium text-gray-700 mb-1">ルーム名（任意）</label>
             <input
@@ -84,7 +85,7 @@ export default function Home() {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
           >
-            {loading ? '作成中...' : 'たまりばを作る'}
+            {loading ? '作成中...' : 'たまり場を作る'}
           </button>
           
           <p className="mt-4 text-xs text-gray-400">
