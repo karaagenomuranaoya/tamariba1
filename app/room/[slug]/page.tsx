@@ -11,6 +11,7 @@ import RoomMenu from './components/RoomMenu';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ImageViewer from './components/ImageViewer';
+import ReplyModal from './components/ReplyModal'; // 追加
 
 export default function RoomPage() {
   const { slug } = useParams() as { slug: string };
@@ -26,11 +27,14 @@ export default function RoomPage() {
 
   // Message State
   const [messages, setMessages] = useState<Message[]>([]);
+  
+  // ★ 追加: 返信スレッドの状態
+  const [activeThread, setActiveThread] = useState<Message | null>(null);
 
   // ImageViewer State
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  // 画像の有効期限切れ判定 (Viewer用にも必要)
+  // 画像の有効期限切れ判定
   const isImageExpired = (createdAt: string) => {
     const created = new Date(createdAt).getTime();
     return (new Date().getTime() - created) > 24 * 60 * 60 * 1000;
@@ -38,7 +42,7 @@ export default function RoomPage() {
 
   const imageMessages = messages.filter(m => m.image_url && !isImageExpired(m.created_at));
 
-  // 1. ルーム情報の取得
+  // 1. ルーム情報の取得 (変更なし)
   useEffect(() => {
     const fetchRoom = async () => {
       if (!slug) return;
@@ -68,7 +72,7 @@ export default function RoomPage() {
     fetchRoom();
   }, [slug, router, searchParams]);
 
-  // 2. メッセージとルーム名のリアルタイム更新
+  // 2. メッセージとルーム名のリアルタイム更新 (変更なし)
   useEffect(() => {
     if (!roomId) return;
     
@@ -101,7 +105,7 @@ export default function RoomPage() {
     };
   }, [roomId]);
 
-  // Viewer Handlers
+  // Viewer Handlers (変更なし)
   const openViewer = (url: string) => {
     const index = imageMessages.findIndex(m => m.image_url === url);
     if (index !== -1) setViewerIndex(index);
@@ -122,7 +126,6 @@ export default function RoomPage() {
   return (
     <div className="flex flex-col h-dvh bg-gray-100">
       
-      {/* Header */}
       <Header 
         roomName={roomName} 
         slug={slug} 
@@ -130,7 +133,6 @@ export default function RoomPage() {
         setShowMenu={setShowMenu} 
       />
 
-      {/* Menu Overlay */}
       {showMenu && roomId && (
         <RoomMenu 
           slug={slug}
@@ -142,17 +144,26 @@ export default function RoomPage() {
         />
       )}
 
-      {/* Message List */}
+      {/* MessageList に onReplyClick を渡す */}
       <MessageList 
         messages={messages} 
         onImageClick={openViewer} 
+        onReplyClick={(msg) => setActiveThread(msg)} 
         onCloseMenu={() => setShowMenu(false)} 
       />
 
-      {/* Chat Input */}
       {roomId && <ChatInput roomId={roomId} />}
 
-      {/* Image Viewer Modal */}
+      {/* Reply Modal (アクティブなスレッドがある場合のみ表示) */}
+      {activeThread && roomId && (
+        <ReplyModal 
+            roomId={roomId}
+            parentMessage={activeThread}
+            allMessages={messages}
+            onClose={() => setActiveThread(null)}
+        />
+      )}
+
       {viewerIndex !== null && imageMessages[viewerIndex] && (
         <ImageViewer
           imageUrl={imageMessages[viewerIndex].image_url!}
