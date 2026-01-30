@@ -328,6 +328,12 @@ type Message = {
   image_url?: string | null;
 };
 
+// ★修正: 関数定義をコンポーネントの外（または使用箇所より上）に移動
+const isImageExpired = (createdAt: string) => {
+  const created = new Date(createdAt).getTime();
+  return (new Date().getTime() - created) > 24 * 60 * 60 * 1000;
+};
+
 export default function RoomPage() {
   const { slug } = useParams();
   const router = useRouter();
@@ -349,39 +355,39 @@ export default function RoomPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ★追加: テキストエリアの参照
+  // テキストエリアの参照
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ★追加: 画像ビューワー用の状態管理
+  // 画像ビューワー用の状態管理
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  // ★追加: 表示可能な画像リストだけを抽出（期限切れを除く）
+  // ★修正: isImageExpired が定義済みなのでエラーにならない
   const imageMessages = messages.filter(m => m.image_url && !isImageExpired(m.created_at));
 
-  // ★追加: 画像を開く
+  // 画像を開く
   const openViewer = (url: string) => {
     const index = imageMessages.findIndex(m => m.image_url === url);
     if (index !== -1) setViewerIndex(index);
   };
 
-  // ★追加: 画像を閉じる
+  // 画像を閉じる
   const closeViewer = () => setViewerIndex(null);
 
-  // ★追加: 次の画像へ
+  // 次の画像へ
   const nextImage = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (viewerIndex === null) return;
     setViewerIndex((prev) => (prev! + 1) % imageMessages.length);
   };
 
-  // ★追加: 前の画像へ
+  // 前の画像へ
   const prevImage = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (viewerIndex === null) return;
     setViewerIndex((prev) => (prev! - 1 + imageMessages.length) % imageMessages.length);
   };
 
-  // ★追加: 入力欄の高さを自動調整する関数
+  // 入力欄の高さを自動調整する関数
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -454,11 +460,6 @@ export default function RoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const isImageExpired = (createdAt: string) => {
-    const created = new Date(createdAt).getTime();
-    return (new Date().getTime() - created) > 24 * 60 * 60 * 1000;
-  };
-
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalNickname = nickname.trim() || DEFAULT_NICKNAME;
@@ -483,7 +484,7 @@ export default function RoomPage() {
     }]);
     setNewMessage(''); setSelectedImage(null); if(fileInputRef.current) fileInputRef.current.value='';
 
-    // ★追加: 送信後に高さも1行分に戻す
+    // 送信後に高さも1行分に戻す
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -518,7 +519,6 @@ export default function RoomPage() {
   if (loading) return <div className="flex items-center justify-center h-dvh text-gray-500">読み込み中...</div>;
 
   return (
-    // ★ h-screen から h-dvh に変更 (スマホのアドレスバー対策)
     <div className="flex flex-col h-dvh bg-gray-100">
       
       {/* ヘッダー */}
@@ -537,7 +537,6 @@ export default function RoomPage() {
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
         </button>
 
-        {/* メニュー (変更なし) */}
         {showMenu && (
           <>
             <div className="fixed inset-0 z-20 bg-black/10" onClick={() => setShowMenu(false)}></div>
@@ -581,14 +580,12 @@ export default function RoomPage() {
               <span className="text-xs font-bold text-gray-600 truncate max-w-[150px]">{msg.nickname}</span>
               <span className="text-[10px] text-gray-400">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
-            {/* ★修正点1: テキストがあるときだけ白い吹き出しを表示 */}
             {msg.content && (
               <div className="bg-white px-3.5 py-2.5 rounded-2xl rounded-tl-none shadow-[0_1px_2px_rgba(0,0,0,0.06)] border border-gray-100 text-[15px] leading-relaxed text-gray-800 break-words whitespace-pre-wrap">
                 {msg.content}
               </div>
             )}
             {msg.image_url && (
-              // ★修正点2: テキストがないときは上のマージン(mt)をなくして、名前のすぐ下に画像を表示
               <div className={`ml-1 ${msg.content ? 'mt-1.5' : 'mt-0'}`}>
                 {isImageExpired(msg.created_at) ? (
                   <div className="bg-gray-100 p-4 rounded text-[10px] text-gray-400 border border-dashed border-gray-300">🚫 画像期限切れ</div>
@@ -612,7 +609,6 @@ export default function RoomPage() {
       <div className="bg-white border-t border-gray-200 shrink-0 pb-safe">
         <form onSubmit={sendMessage} className="flex flex-col max-w-screen-md mx-auto">
           
-          {/* 画像選択中の表示 */}
           {selectedImage && (
             <div className="px-3 pt-3">
               <div className="flex items-center justify-between bg-blue-50 p-2 px-3 rounded-lg text-sm text-blue-800 border border-blue-100">
@@ -627,7 +623,6 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* 上段: ニックネーム入力 (目立たなく、でも押しやすく) */}
           <div className="px-3 pt-2">
              <input 
               type="text" 
@@ -638,15 +633,12 @@ export default function RoomPage() {
             />
           </div>
 
-          {/* 下段: メイン入力周り */}
           <div className="flex gap-2 items-end px-3 pb-3 pt-1">
-            {/* 画像ボタン */}
             <label className="shrink-0 p-2.5 text-gray-500 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-full cursor-pointer transition-colors mb-0.5">
               <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { if (e.target.files?.[0]) setSelectedImage(e.target.files[0]); }} />
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
             </label>
             
-            {/* ★ここを input から textarea に変更 */}
             <textarea
               ref={textareaRef}
               placeholder="メッセージ..." 
@@ -654,12 +646,11 @@ export default function RoomPage() {
               rows={1}
               onChange={(e) => {
                 setNewMessage(e.target.value);
-                adjustTextareaHeight(); // 入力のたびに高さを再計算
+                adjustTextareaHeight(); 
               }}
               className="flex-1 p-3 bg-gray-50 border-0 rounded-2xl focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all text-base min-h-[44px] max-h-[150px] resize-none overflow-y-auto leading-relaxed"
             />
             
-            {/* 送信ボタン */}
             <button 
               type="submit" 
               disabled={(!newMessage && !selectedImage) || isUploading} 
@@ -674,27 +665,24 @@ export default function RoomPage() {
           </div>
         </form>
       </div>
-    {/* ★追加: 画像ビューワーモーダル */}
+
       {viewerIndex !== null && imageMessages[viewerIndex] && (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-200" onClick={closeViewer}>
           
-          {/* 閉じるボタン */}
           <button onClick={closeViewer} className="absolute top-4 right-4 text-white/70 hover:text-white p-2 z-50">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
 
-          {/* 画像本体 */}
           <div className="relative w-full h-full flex items-center justify-center p-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
               src={imageMessages[viewerIndex].image_url!} 
               alt="viewing" 
               className="max-h-full max-w-full object-contain shadow-2xl"
-              onClick={(e) => e.stopPropagation()} // 画像クリックでは閉じない
+              onClick={(e) => e.stopPropagation()} 
             />
           </div>
 
-          {/* 前へボタン (画像が複数ある時だけ表示) */}
           {imageMessages.length > 1 && (
             <button 
               onClick={prevImage}
@@ -704,7 +692,6 @@ export default function RoomPage() {
             </button>
           )}
 
-          {/* 次へボタン (画像が複数ある時だけ表示) */}
           {imageMessages.length > 1 && (
             <button 
               onClick={nextImage}
@@ -714,7 +701,6 @@ export default function RoomPage() {
             </button>
           )}
 
-          {/* 下部情報 (投稿者名など) */}
           <div className="absolute bottom-6 left-0 right-0 text-center text-white/80 text-sm font-medium pb-safe">
             <p>{imageMessages[viewerIndex].nickname}</p>
             <p className="text-xs text-white/50 mt-1">
@@ -724,8 +710,7 @@ export default function RoomPage() {
         </div>
       )}
 
-    </div> // ← 最下部の閉じタグ
-
+    </div>
   );
 }
 ```
