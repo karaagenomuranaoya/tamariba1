@@ -1,7 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { createClient } from '@supabase/supabase-js';
 
-// Edge Runtimeで動作させる設定
 export const runtime = 'edge';
 
 export const size = {
@@ -11,7 +10,6 @@ export const size = {
 
 export const contentType = 'image/png';
 
-// Edge内でもSupabaseを使えるようにここで初期化
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -23,15 +21,11 @@ type Props = {
 export default async function Image({ params }: Props) {
   const { slug } = await params;
 
-  // 日本語フォント取得 (Topと同じロジック)
+  // ★修正: こちらもCDNから直接取得
   const fontData = await fetch(
-    new URL('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&display=swap', import.meta.url)
-  ).then((res) => res.text());
-  const fontUrl = fontData.match(/src: url\((.+)\) format\('woff2'\)/)?.[1];
-  if (!fontUrl) throw new Error('Failed to load font');
-  const fontBuffer = await fetch(fontUrl).then((res) => res.arrayBuffer());
+    new URL('https://unpkg.com/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-all-700-normal.woff', import.meta.url)
+  ).then((res) => res.arrayBuffer());
 
-  // ルーム名を取得
   const { data } = await supabase
     .from('tm_rooms')
     .select('name')
@@ -50,11 +44,10 @@ export default async function Image({ params }: Props) {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: '#eff6ff', // blue-50
+          backgroundColor: '#eff6ff',
           position: 'relative',
         }}
       >
-        {/* 装飾: 背景の円 */}
         <div
           style={{
             position: 'absolute',
@@ -63,7 +56,7 @@ export default async function Image({ params }: Props) {
             width: '600px',
             height: '600px',
             borderRadius: '50%',
-            background: '#dbeafe', // blue-100
+            background: '#dbeafe',
             opacity: 0.5,
           }}
         />
@@ -75,12 +68,11 @@ export default async function Image({ params }: Props) {
             width: '400px',
             height: '400px',
             borderRadius: '50%',
-            background: '#dbeafe', // blue-100
+            background: '#dbeafe',
             opacity: 0.5,
           }}
         />
 
-        {/* メインコンテンツカード */}
         <div
           style={{
             display: 'flex',
@@ -115,8 +107,6 @@ export default async function Image({ params }: Props) {
               textAlign: 'center',
               lineHeight: 1.2,
               marginBottom: '40px',
-              // 長すぎる名前の場合は切り詰めるなどの処理が必要ですが、
-              // CSS的には折り返されます
             }}
           >
             {roomName}
@@ -144,7 +134,6 @@ export default async function Image({ params }: Props) {
           </div>
         </div>
 
-        {/* 下部ロゴ */}
         <div
           style={{
             position: 'absolute',
@@ -164,7 +153,7 @@ export default async function Image({ params }: Props) {
       fonts: [
         {
           name: 'Noto Sans JP',
-          data: fontBuffer,
+          data: fontData,
           style: 'normal',
           weight: 700,
         },
