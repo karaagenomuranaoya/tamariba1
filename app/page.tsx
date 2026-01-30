@@ -20,6 +20,31 @@ export default function Home() {
     return str;
   };
 
+  // ★ 追加: 「次の日本時間 午前3:00」を計算する関数
+  const getNextJst3AM = () => {
+    // 現在時刻を取得
+    const now = new Date();
+    
+    // UTC時間に変換して計算することで、ユーザーのPCのタイムゾーン設定に依存せずJSTを扱う
+    // JSTは UTC+9
+    const jstOffset = 9 * 60; 
+    const currentUtcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const currentJstTime = new Date(currentUtcTime + (jstOffset * 60000));
+
+    // JST基準で「今日の3時」を作る
+    const targetJst = new Date(currentJstTime);
+    targetJst.setHours(3, 0, 0, 0);
+
+    // もし「現在のJST」が「今日の3時」を過ぎていたら、ターゲットは「明日の3時」
+    if (currentJstTime > targetJst) {
+      targetJst.setDate(targetJst.getDate() + 1);
+    }
+
+    // 計算したJSTのターゲット時刻を、DB保存用にUTCに戻す
+    const targetUtcTimestamp = targetJst.getTime() - (jstOffset * 60000);
+    return new Date(targetUtcTimestamp).toISOString();
+  };
+
   const createRoom = async () => {
     setLoading(true);
     try {
@@ -28,6 +53,7 @@ export default function Home() {
       
       // デフォルト名は「たまりば」
       const finalName = roomName.trim() || 'たまりば';
+      const expiresAt = getNextJst3AM(); // ★ 有効期限を計算
 
       const { error } = await supabase
         .from('tm_rooms')
@@ -35,7 +61,8 @@ export default function Home() {
           { 
             slug: slug, 
             owner_token: ownerToken,
-            name: finalName
+            name: finalName,
+            expires_at: expiresAt // ★ DBに追加
           }
         ]);
 

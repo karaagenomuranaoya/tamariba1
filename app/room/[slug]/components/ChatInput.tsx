@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -19,6 +19,16 @@ export default function ChatInput({ roomId }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // ★ 追加: マウント時に保存されたニックネームを復元
+  useEffect(() => {
+    if (roomId) {
+      const savedName = localStorage.getItem(`tamariba_nickname_${roomId}`);
+      if (savedName) {
+        setNickname(savedName);
+      }
+    }
+  }, [roomId]);
+
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -30,6 +40,9 @@ export default function ChatInput({ roomId }: Props) {
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!newMessage.trim() && !selectedImage) || !roomId) return;
+
+    // ★ 追加: 送信時にニックネームを保存（空文字の場合もそのまま保存して、次回空欄にする）
+    localStorage.setItem(`tamariba_nickname_${roomId}`, nickname);
 
     const finalNickname = nickname.trim() || DEFAULT_NICKNAME;
     let imageUrl = null;

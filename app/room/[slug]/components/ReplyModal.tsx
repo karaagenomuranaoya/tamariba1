@@ -29,11 +29,25 @@ export default function ReplyModal({ roomId, parentMessage, allMessages, onClose
     }
   }, [replies.length]);
 
+  // ★ 追加: マウント時に保存されたニックネームを復元（ChatInputと共有）
+  useEffect(() => {
+    if (roomId) {
+      const savedName = localStorage.getItem(`tamariba_nickname_${roomId}`);
+      if (savedName) {
+        setNickname(savedName);
+      }
+    }
+  }, [roomId]);
+
   const sendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyContent.trim() || isSending) return;
 
     setIsSending(true);
+
+    // ★ 追加: 送信時にニックネームを保存
+    localStorage.setItem(`tamariba_nickname_${roomId}`, nickname);
+
     const finalNickname = nickname.trim() || DEFAULT_NICKNAME;
 
     await supabase.from('tm_messages').insert([
