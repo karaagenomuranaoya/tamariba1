@@ -224,11 +224,15 @@ export default function RoomPage() {
               <span className="text-xs font-bold text-gray-600 truncate max-w-[150px]">{msg.nickname}</span>
               <span className="text-[10px] text-gray-400">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
-            <div className="bg-white px-3.5 py-2.5 rounded-2xl rounded-tl-none shadow-[0_1px_2px_rgba(0,0,0,0.06)] border border-gray-100 text-[15px] leading-relaxed text-gray-800 break-words whitespace-pre-wrap">
-              {msg.content}
-            </div>
+            {/* ★修正点1: テキストがあるときだけ白い吹き出しを表示 */}
+            {msg.content && (
+              <div className="bg-white px-3.5 py-2.5 rounded-2xl rounded-tl-none shadow-[0_1px_2px_rgba(0,0,0,0.06)] border border-gray-100 text-[15px] leading-relaxed text-gray-800 break-words whitespace-pre-wrap">
+                {msg.content}
+              </div>
+            )}
             {msg.image_url && (
-              <div className="mt-1.5 ml-1">
+              // ★修正点2: テキストがないときは上のマージン(mt)をなくして、名前のすぐ下に画像を表示
+              <div className={`ml-1 ${msg.content ? 'mt-1.5' : 'mt-0'}`}>
                 {isImageExpired(msg.created_at) ? (
                   <div className="bg-gray-100 p-4 rounded text-[10px] text-gray-400 border border-dashed border-gray-300">🚫 画像期限切れ</div>
                 ) : (
