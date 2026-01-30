@@ -14,24 +14,35 @@ const geistMono = Geist_Mono({
 
 
 export const metadata: Metadata = {
-  // ★ここが重要: これがないとOGP画像のURLが相対パスになり、SNSで表示されません
+  // ベースURL（必須）
   metadataBase: new URL("https://tamariba1.vercel.app"), 
 
   title: "たまりば",
   description: "URLひとつで、匿名・クローズド・気兼ねなし",
   
-  // ファイル (opengraph-image.jpeg) を置いている場合、
-  // 以下の設定はNext.jsが自動生成するので、基本的には書かなくて大丈夫ですが、
-  // 明示的に書きたい場合は以下のようにします。
   openGraph: {
     title: "たまりば",
     description: "URLひとつで、匿名・クローズド・気兼ねなし",
+    url: "https://tamariba1.vercel.app",
+    siteName: "たまりば",
+    locale: "ja_JP",
     type: "website",
+    // ★ここを追加：publicフォルダの画像を明示的に指定
+    images: [
+      {
+        url: "/ogp.jpg", // publicフォルダに入れたファイル名（先頭に / をつける）
+        width: 1200,
+        height: 630,
+        alt: "たまりば",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "たまりば",
     description: "URLひとつで、匿名・クローズド・気兼ねなし",
+    // twitter側も念のため指定
+    images: ["/ogp.jpg"], 
   },
 };
 
