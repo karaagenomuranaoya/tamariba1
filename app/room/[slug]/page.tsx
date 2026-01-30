@@ -41,6 +41,35 @@ export default function RoomPage() {
   // ★追加: テキストエリアの参照
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // ★追加: 画像ビューワー用の状態管理
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
+  // ★追加: 表示可能な画像リストだけを抽出（期限切れを除く）
+  const imageMessages = messages.filter(m => m.image_url && !isImageExpired(m.created_at));
+
+  // ★追加: 画像を開く
+  const openViewer = (url: string) => {
+    const index = imageMessages.findIndex(m => m.image_url === url);
+    if (index !== -1) setViewerIndex(index);
+  };
+
+  // ★追加: 画像を閉じる
+  const closeViewer = () => setViewerIndex(null);
+
+  // ★追加: 次の画像へ
+  const nextImage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (viewerIndex === null) return;
+    setViewerIndex((prev) => (prev! + 1) % imageMessages.length);
+  };
+
+  // ★追加: 前の画像へ
+  const prevImage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (viewerIndex === null) return;
+    setViewerIndex((prev) => (prev! - 1 + imageMessages.length) % imageMessages.length);
+  };
+
   // ★追加: 入力欄の高さを自動調整する関数
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -254,7 +283,12 @@ export default function RoomPage() {
                   <div className="bg-gray-100 p-4 rounded text-[10px] text-gray-400 border border-dashed border-gray-300">🚫 画像期限切れ</div>
                 ) : (
                    // eslint-disable-next-line @next/next/no-img-element
-                  <img src={msg.image_url} alt="posted" className="rounded-xl border border-gray-100 max-h-60 object-contain bg-white" />
+                  <img 
+                    src={msg.image_url} 
+                    alt="posted" 
+                    onClick={() => openViewer(msg.image_url!)}
+                    className="rounded-xl border border-gray-100 max-h-60 object-contain bg-white cursor-pointer hover:opacity-95 transition-opacity" 
+                  />
                 )}
               </div>
             )}
@@ -329,6 +363,57 @@ export default function RoomPage() {
           </div>
         </form>
       </div>
-    </div>
+    {/* ★追加: 画像ビューワーモーダル */}
+      {viewerIndex !== null && imageMessages[viewerIndex] && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-200" onClick={closeViewer}>
+          
+          {/* 閉じるボタン */}
+          <button onClick={closeViewer} className="absolute top-4 right-4 text-white/70 hover:text-white p-2 z-50">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+
+          {/* 画像本体 */}
+          <div className="relative w-full h-full flex items-center justify-center p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src={imageMessages[viewerIndex].image_url!} 
+              alt="viewing" 
+              className="max-h-full max-w-full object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()} // 画像クリックでは閉じない
+            />
+          </div>
+
+          {/* 前へボタン (画像が複数ある時だけ表示) */}
+          {imageMessages.length > 1 && (
+            <button 
+              onClick={prevImage}
+              className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full backdrop-blur-sm transition-all active:scale-95"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+            </button>
+          )}
+
+          {/* 次へボタン (画像が複数ある時だけ表示) */}
+          {imageMessages.length > 1 && (
+            <button 
+              onClick={nextImage}
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full backdrop-blur-sm transition-all active:scale-95"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+            </button>
+          )}
+
+          {/* 下部情報 (投稿者名など) */}
+          <div className="absolute bottom-6 left-0 right-0 text-center text-white/80 text-sm font-medium pb-safe">
+            <p>{imageMessages[viewerIndex].nickname}</p>
+            <p className="text-xs text-white/50 mt-1">
+              {viewerIndex + 1} / {imageMessages.length}
+            </p>
+          </div>
+        </div>
+      )}
+
+    </div> // ← 最下部の閉じタグ
+
   );
 }
