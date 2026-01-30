@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   // ★ここが重要: これがないとOGP画像のURLが相対パスになり、SNSで表示されません
-  metadataBase: new URL("https://tamariba.vercel.app"), 
+  metadataBase: new URL("https://tamariba1.vercel.app"), 
 
   title: "たまりば",
   description: "URLひとつで、匿名・クローズド・気兼ねなし",
