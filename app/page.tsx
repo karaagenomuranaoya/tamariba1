@@ -65,6 +65,9 @@ export default function Home() {
           <p className="mt-4 text-lg text-gray-600">
             URLひとつで、匿名・クローズド・気兼ねなし。<br />
             登録不要のチャットルームを一瞬で作成。
+            <span className="inline-block bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-base font-bold mt-2">
+              🌙 毎日AM3:00に全員解散
+            </span>
           </p>
         </div>
 

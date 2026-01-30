@@ -13,6 +13,7 @@
 │           │   ├── Header.tsx
 │           │   ├── ImageViewer.tsx
 │           │   ├── MessageList.tsx
+│           │   ├── ReplyModal.tsx
 │           │   └── RoomMenu.tsx
 │           ├── page.tsx
 │           └── types.ts
@@ -275,6 +276,9 @@ export default function Home() {
           <p className="mt-4 text-lg text-gray-600">
             URLひとつで、匿名・クローズド・気兼ねなし。<br />
             登録不要のチャットルームを一瞬で作成。
+            <span className="inline-block bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-base font-bold mt-2">
+              🌙 毎日AM3:00に全員解散
+            </span>
           </p>
         </div>
 
@@ -329,6 +333,7 @@ import RoomMenu from './components/RoomMenu';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ImageViewer from './components/ImageViewer';
+import ReplyModal from './components/ReplyModal'; // 追加
 
 export default function RoomPage() {
   const { slug } = useParams() as { slug: string };
@@ -344,11 +349,14 @@ export default function RoomPage() {
 
   // Message State
   const [messages, setMessages] = useState<Message[]>([]);
+  
+  // ★ 追加: 返信スレッドの状態
+  const [activeThread, setActiveThread] = useState<Message | null>(null);
 
   // ImageViewer State
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  // 画像の有効期限切れ判定 (Viewer用にも必要)
+  // 画像の有効期限切れ判定
   const isImageExpired = (createdAt: string) => {
     const created = new Date(createdAt).getTime();
     return (new Date().getTime() - created) > 24 * 60 * 60 * 1000;
@@ -356,7 +364,7 @@ export default function RoomPage() {
 
   const imageMessages = messages.filter(m => m.image_url && !isImageExpired(m.created_at));
 
-  // 1. ルーム情報の取得
+  // 1. ルーム情報の取得 (変更なし)
   useEffect(() => {
     const fetchRoom = async () => {
       if (!slug) return;
@@ -386,7 +394,7 @@ export default function RoomPage() {
     fetchRoom();
   }, [slug, router, searchParams]);
 
-  // 2. メッセージとルーム名のリアルタイム更新
+  // 2. メッセージとルーム名のリアルタイム更新 (変更なし)
   useEffect(() => {
     if (!roomId) return;
     
@@ -411,6 +419,12 @@ export default function RoomPage() {
             setRoomName(payload.new.name);
         }
       })
+      // ★ 追加: ルーム削除（解散）の検知
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tm_rooms', filter: `id=eq.${roomId}` },
+      () => {
+        alert('午前3時になりました。\n「たまりば」は解散しました。また明日。');
+        router.push('/');
+      })
       .subscribe();
 
     return () => { 
@@ -419,7 +433,7 @@ export default function RoomPage() {
     };
   }, [roomId]);
 
-  // Viewer Handlers
+  // Viewer Handlers (変更なし)
   const openViewer = (url: string) => {
     const index = imageMessages.findIndex(m => m.image_url === url);
     if (index !== -1) setViewerIndex(index);
@@ -440,7 +454,6 @@ export default function RoomPage() {
   return (
     <div className="flex flex-col h-dvh bg-gray-100">
       
-      {/* Header */}
       <Header 
         roomName={roomName} 
         slug={slug} 
@@ -448,7 +461,6 @@ export default function RoomPage() {
         setShowMenu={setShowMenu} 
       />
 
-      {/* Menu Overlay */}
       {showMenu && roomId && (
         <RoomMenu 
           slug={slug}
@@ -460,17 +472,26 @@ export default function RoomPage() {
         />
       )}
 
-      {/* Message List */}
+      {/* MessageList に onReplyClick を渡す */}
       <MessageList 
         messages={messages} 
         onImageClick={openViewer} 
+        onReplyClick={(msg) => setActiveThread(msg)} 
         onCloseMenu={() => setShowMenu(false)} 
       />
 
-      {/* Chat Input */}
       {roomId && <ChatInput roomId={roomId} />}
 
-      {/* Image Viewer Modal */}
+      {/* Reply Modal (アクティブなスレッドがある場合のみ表示) */}
+      {activeThread && roomId && (
+        <ReplyModal 
+            roomId={roomId}
+            parentMessage={activeThread}
+            allMessages={messages}
+            onClose={() => setActiveThread(null)}
+        />
+      )}
+
       {viewerIndex !== null && imageMessages[viewerIndex] && (
         <ImageViewer
           imageUrl={imageMessages[viewerIndex].image_url!}
@@ -495,6 +516,7 @@ export type Message = {
   content: string;
   created_at: string;
   image_url?: string | null;
+  parent_id?: string | null; // 追加
 };
 ```
 
@@ -773,64 +795,245 @@ import { Message } from '../types';
 type Props = {
   messages: Message[];
   onImageClick: (url: string) => void;
+  onReplyClick: (message: Message) => void; // 追加
   onCloseMenu: () => void;
 };
 
-// ユーティリティ: 画像の期限切れ判定
 const isImageExpired = (createdAt: string) => {
   const created = new Date(createdAt).getTime();
   return new Date().getTime() - created > 24 * 60 * 60 * 1000;
 };
 
-export default function MessageList({ messages, onImageClick, onCloseMenu }: Props) {
+export default function MessageList({ messages, onImageClick, onReplyClick, onCloseMenu }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 親メッセージ（トップレベルの投稿）のみを抽出して表示
+  const rootMessages = messages.filter((m) => !m.parent_id);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [rootMessages.length]); // rootMessagesの変更でスクロール
+
+  // 特定のメッセージに対する返信数をカウントする関数
+  const getReplyCount = (parentId: string) => {
+    return messages.filter((m) => m.parent_id === parentId).length;
+  };
 
   return (
     <div
       className="flex-1 overflow-y-auto p-3 space-y-4 bg-slate-50 scroll-smooth"
       onClick={onCloseMenu}
     >
-      {messages.map((msg) => (
-        <div key={msg.id} className="flex flex-col items-start max-w-[90%]">
-          <div className="flex items-baseline gap-2 mb-1 ml-1">
-            <span className="text-xs font-bold text-gray-600 truncate max-w-[150px]">
-              {msg.nickname}
-            </span>
-            <span className="text-[10px] text-gray-400">
-              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+      {rootMessages.map((msg) => {
+        const replyCount = getReplyCount(msg.id);
+        
+        return (
+          <div key={msg.id} className="group flex flex-col items-start max-w-[95%] relative">
+            <div className="flex items-baseline gap-2 mb-1 ml-1">
+              <span className="text-xs font-bold text-gray-600 truncate max-w-[150px]">
+                {msg.nickname}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+
+            <div className="flex items-end gap-2 w-full">
+              {/* Message Bubble */}
+              <div className="flex-1 min-w-0">
+                {msg.content && (
+                  <div className="bg-white px-3.5 py-2.5 rounded-2xl rounded-tl-none shadow-[0_1px_2px_rgba(0,0,0,0.06)] border border-gray-100 text-[15px] leading-relaxed text-gray-800 break-words whitespace-pre-wrap">
+                    {msg.content}
+                  </div>
+                )}
+
+                {msg.image_url && (
+                  <div className={`ml-1 ${msg.content ? 'mt-1.5' : 'mt-0'}`}>
+                    {isImageExpired(msg.created_at) ? (
+                      <div className="bg-gray-100 p-4 rounded text-[10px] text-gray-400 border border-dashed border-gray-300">
+                        🚫 画像期限切れ
+                      </div>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={msg.image_url}
+                        alt="posted"
+                        onClick={() => onImageClick(msg.image_url!)}
+                        className="rounded-xl border border-gray-100 max-h-60 object-contain bg-white cursor-pointer hover:opacity-95 transition-opacity"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Reply Button (右側にちょろっと矢印) */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReplyClick(msg);
+                }}
+                className="shrink-0 mb-1 p-1.5 rounded-full text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors flex items-center gap-1"
+                aria-label="返信"
+              >
+                 {replyCount > 0 ? (
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-blue-500">{replyCount}</span>
+                         {/* 返信ありの場合: 青色で目立たせる */}
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-blue-400">
+                            <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 000 1.06l3 3a.75.75 0 101.06-1.06l-1.72-1.72h5.69c1.19 0 2.155.877 2.244 2.036l.006.104V15a.75.75 0 001.5 0v-1.11c0-1.884-1.428-3.447-3.262-3.633l-.159-.007H10.81l1.72-1.72a.75.75 0 000-1.06z" clipRule="evenodd" />
+                        </svg>
+                    </div>
+                 ) : (
+                    // 返信なしの場合: グレーで控えめに
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 -scale-x-100">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                    </svg>
+                 )}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      <div ref={messagesEndRef} className="h-2" />
+    </div>
+  );
+}
+```
+
+## File: app/room/[slug]/components/ReplyModal.tsx
+```tsx
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Message } from '../types';
+
+type Props = {
+  roomId: string;
+  parentMessage: Message;
+  allMessages: Message[]; // 全メッセージからリプライを抽出して表示
+  onClose: () => void;
+};
+
+const DEFAULT_NICKNAME = 'からあげ';
+
+export default function ReplyModal({ roomId, parentMessage, allMessages, onClose }: Props) {
+  const [nickname, setNickname] = useState('');
+  const [replyContent, setReplyContent] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // この親メッセージに対する返信のみを抽出
+  const replies = allMessages.filter((m) => m.parent_id === parentMessage.id);
+
+  // 最新の返信が見えるようにスクロール
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [replies.length]);
+
+  const sendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyContent.trim() || isSending) return;
+
+    setIsSending(true);
+    const finalNickname = nickname.trim() || DEFAULT_NICKNAME;
+
+    await supabase.from('tm_messages').insert([
+      {
+        room_id: roomId,
+        nickname: finalNickname,
+        content: replyContent,
+        parent_id: parentMessage.id, // 親IDを指定
+      },
+    ]);
+
+    setReplyContent('');
+    setIsSending(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div 
+        className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+          <h3 className="text-sm font-bold text-gray-700">返信スレッド</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Thread Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white" ref={scrollRef}>
+          {/* 親メッセージ（少し強調） */}
+          <div className="pl-2 border-l-4 border-gray-200">
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="text-xs font-bold text-gray-600">{parentMessage.nickname}</span>
+              <span className="text-[10px] text-gray-400">
+                {new Date(parentMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+            <div className="text-sm text-gray-800 whitespace-pre-wrap">{parentMessage.content}</div>
+            {parentMessage.image_url && (
+               <div className="mt-2 text-xs text-gray-400">[画像]</div>
+            )}
           </div>
 
-          {msg.content && (
-            <div className="bg-white px-3.5 py-2.5 rounded-2xl rounded-tl-none shadow-[0_1px_2px_rgba(0,0,0,0.06)] border border-gray-100 text-[15px] leading-relaxed text-gray-800 break-words whitespace-pre-wrap">
-              {msg.content}
-            </div>
-          )}
+          <div className="border-t border-gray-100 my-2"></div>
 
-          {msg.image_url && (
-            <div className={`ml-1 ${msg.content ? 'mt-1.5' : 'mt-0'}`}>
-              {isImageExpired(msg.created_at) ? (
-                <div className="bg-gray-100 p-4 rounded text-[10px] text-gray-400 border border-dashed border-gray-300">
-                  🚫 画像期限切れ
+          {/* 返信一覧 */}
+          {replies.length === 0 ? (
+            <div className="text-center text-xs text-gray-400 py-4">まだ返信はありません</div>
+          ) : (
+            replies.map((msg) => (
+              <div key={msg.id} className="flex flex-col items-start">
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-xs font-bold text-blue-600">{msg.nickname}</span>
+                  <span className="text-[10px] text-gray-400">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={msg.image_url}
-                  alt="posted"
-                  onClick={() => onImageClick(msg.image_url!)}
-                  className="rounded-xl border border-gray-100 max-h-60 object-contain bg-white cursor-pointer hover:opacity-95 transition-opacity"
-                />
-              )}
-            </div>
+                <div className="bg-blue-50 px-3 py-2 rounded-xl rounded-tl-none text-sm text-gray-800 whitespace-pre-wrap">
+                  {msg.content}
+                </div>
+              </div>
+            ))
           )}
         </div>
-      ))}
-      <div ref={messagesEndRef} className="h-2" />
+
+        {/* Reply Input */}
+        <form onSubmit={sendReply} className="p-3 border-t border-gray-100 bg-gray-50">
+           <input
+            type="text"
+            placeholder={`名前 (省略: ${DEFAULT_NICKNAME})`}
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            className="text-xs text-gray-500 bg-transparent placeholder-gray-400 focus:outline-none mb-2 w-full px-1"
+          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="flex-1 p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 transition-colors"
+              placeholder="返信を入力..."
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={!replyContent || isSending}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50"
+            >
+              送信
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

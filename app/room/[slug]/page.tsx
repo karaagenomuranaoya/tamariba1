@@ -1,180 +1,138 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Message } from './types';
+import { v4 as uuidv4 } from 'uuid';
 
-// Components
-import Header from './components/Header';
-import RoomMenu from './components/RoomMenu';
-import MessageList from './components/MessageList';
-import ChatInput from './components/ChatInput';
-import ImageViewer from './components/ImageViewer';
-import ReplyModal from './components/ReplyModal'; // 追加
-
-export default function RoomPage() {
-  const { slug } = useParams() as { slug: string };
+export default function Home() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  // Room State
-  const [roomId, setRoomId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [roomName, setRoomName] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [isHost, setIsHost] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
 
-  // Message State
-  const [messages, setMessages] = useState<Message[]>([]);
-  
-  // ★ 追加: 返信スレッドの状態
-  const [activeThread, setActiveThread] = useState<Message | null>(null);
-
-  // ImageViewer State
-  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-
-  // 画像の有効期限切れ判定
-  const isImageExpired = (createdAt: string) => {
-    const created = new Date(createdAt).getTime();
-    return (new Date().getTime() - created) > 24 * 60 * 60 * 1000;
+  const generateSlug = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    const nums = '0123456789';
+    let str = '';
+    for (let i = 0; i < 3; i++) str += chars.charAt(Math.floor(Math.random() * chars.length));
+    str += '-';
+    for (let i = 0; i < 3; i++) str += nums.charAt(Math.floor(Math.random() * nums.length));
+    return str;
   };
 
-  const imageMessages = messages.filter(m => m.image_url && !isImageExpired(m.created_at));
+  // ★ 追加: 「次の日本時間 午前3:00」を計算する関数
+  const getNextJst3AM = () => {
+    // 現在時刻を取得
+    const now = new Date();
+    
+    // UTC時間に変換して計算することで、ユーザーのPCのタイムゾーン設定に依存せずJSTを扱う
+    // JSTは UTC+9
+    const jstOffset = 9 * 60; 
+    const currentUtcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const currentJstTime = new Date(currentUtcTime + (jstOffset * 60000));
 
-  // 1. ルーム情報の取得 (変更なし)
-  useEffect(() => {
-    const fetchRoom = async () => {
-      if (!slug) return;
+    // JST基準で「今日の3時」を作る
+    const targetJst = new Date(currentJstTime);
+    targetJst.setHours(3, 0, 0, 0);
+
+    // もし「現在のJST」が「今日の3時」を過ぎていたら、ターゲットは「明日の3時」
+    if (currentJstTime > targetJst) {
+      targetJst.setDate(targetJst.getDate() + 1);
+    }
+
+    // 計算したJSTのターゲット時刻を、DB保存用にUTCに戻す（ISO文字列化でOK）
+    // ※ 手動でUTCに戻すより、Dateオブジェクトのメソッドを使うため、
+    //    一度「ターゲット時刻と同じ時刻を示すローカルDate」等を経由せず、
+    //    ISOString形式で渡すためにUTC換算値を計算し直す。
+    
+    // シンプルに: targetJst は「JSTでの時刻を表すDateオブジェクト」になっている（中身の数値はずれている）ので
+    // ここから9時間を引いて本来のUTCタイムスタンプに戻す
+    const targetUtcTimestamp = targetJst.getTime() - (jstOffset * 60000);
+    return new Date(targetUtcTimestamp).toISOString();
+  };
+
+  const createRoom = async () => {
+    setLoading(true);
+    try {
+      const slug = generateSlug();
+      const ownerToken = uuidv4();
       
-      const { data, error } = await supabase
+      const finalName = roomName.trim() || 'たまりば';
+      const expiresAt = getNextJst3AM(); // ★ 有効期限を計算
+
+      const { error } = await supabase
         .from('tm_rooms')
-        .select('id, name') 
-        .eq('slug', slug)
-        .single();
-      
-      if (error || !data) {
-        alert('このルームは存在しないか、削除されました。');
-        router.push('/');
+        .insert([
+          { 
+            slug: slug, 
+            owner_token: ownerToken,
+            name: finalName,
+            expires_at: expiresAt // ★ DBに追加
+          }
+        ]);
+
+      if (error) {
+        console.error('Error creating room:', error);
+        alert('エラーが発生しました。もう一度お試しください。');
+        setLoading(false);
         return;
       }
-      setRoomId(data.id);
-      setRoomName(data.name || 'たまりば');
 
-      const ownerToken = localStorage.getItem(`tamariba_owner_${slug}`);
-      if (ownerToken) setIsHost(true);
+      localStorage.setItem(`tamariba_owner_${slug}`, ownerToken);
+      
+      router.push(`/room/${slug}?created=true`);
 
-      if (searchParams.get('created') === 'true') {
-        setShowMenu(true);
-        router.replace(`/room/${slug}`);
-      }
-    };
-    fetchRoom();
-  }, [slug, router, searchParams]);
-
-  // 2. メッセージとルーム名のリアルタイム更新 (変更なし)
-  useEffect(() => {
-    if (!roomId) return;
-    
-    // 初期ロード
-    const fetchMessages = async () => {
-      const { data } = await supabase.from('tm_messages').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
-      if (data) setMessages(data);
+    } catch (err) {
+      console.error(err);
       setLoading(false);
-    };
-    fetchMessages();
-
-    // 購読開始
-    const msgChannel = supabase.channel(`room:${roomId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tm_messages', filter: `room_id=eq.${roomId}` }, 
-      (payload) => { setMessages((prev) => [...prev, payload.new as Message]); })
-      .subscribe();
-    
-    const roomChannel = supabase.channel(`room_meta:${roomId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tm_rooms', filter: `id=eq.${roomId}` },
-      (payload) => {
-        if (payload.new && 'name' in payload.new) {
-            setRoomName(payload.new.name);
-        }
-      })
-      .subscribe();
-
-    return () => { 
-        supabase.removeChannel(msgChannel); 
-        supabase.removeChannel(roomChannel);
-    };
-  }, [roomId]);
-
-  // Viewer Handlers (変更なし)
-  const openViewer = (url: string) => {
-    const index = imageMessages.findIndex(m => m.image_url === url);
-    if (index !== -1) setViewerIndex(index);
+    }
   };
-
-  const nextImage = () => {
-    if (viewerIndex === null) return;
-    setViewerIndex((prev) => (prev! + 1) % imageMessages.length);
-  };
-
-  const prevImage = () => {
-    if (viewerIndex === null) return;
-    setViewerIndex((prev) => (prev! - 1 + imageMessages.length) % imageMessages.length);
-  };
-
-  if (loading) return <div className="flex items-center justify-center h-dvh text-gray-500">読み込み中...</div>;
 
   return (
-    <div className="flex flex-col h-dvh bg-gray-100">
-      
-      <Header 
-        roomName={roomName} 
-        slug={slug} 
-        showMenu={showMenu} 
-        setShowMenu={setShowMenu} 
-      />
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
+      <div className="max-w-md w-full text-center space-y-8">
+        <div>
+          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">たまりば</h1>
+          <p className="mt-4 text-lg text-gray-600">
+            URLひとつで、匿名・クローズド・気兼ねなし。<br />
+            登録不要のチャットルームを一瞬で作成。
+            <span className="inline-block bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-base font-bold mt-2">
+              🌙 毎日AM3:00に全員解散
+            </span>
+          </p>
+        </div>
 
-      {showMenu && roomId && (
-        <RoomMenu 
-          slug={slug}
-          roomId={roomId}
-          isHost={isHost}
-          roomName={roomName}
-          setRoomName={setRoomName}
-          onClose={() => setShowMenu(false)}
-        />
-      )}
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+          <div>
+            <label className="block text-left text-sm font-medium text-gray-700 mb-1">ルーム名（任意）</label>
+            <input
+              type="text"
+              placeholder="たまりば"
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+            />
+          </div>
 
-      {/* MessageList に onReplyClick を渡す */}
-      <MessageList 
-        messages={messages} 
-        onImageClick={openViewer} 
-        onReplyClick={(msg) => setActiveThread(msg)} 
-        onCloseMenu={() => setShowMenu(false)} 
-      />
+          <button
+            onClick={createRoom}
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
+          >
+            {loading ? '作成中...' : 'たまり場を作る'}
+          </button>
+          
+          <p className="mt-4 text-xs text-gray-400">
+            ボタンを押すと即座にルームが作成され、<br />
+            専用のURLへ移動します。
+          </p>
+        </div>
 
-      {roomId && <ChatInput roomId={roomId} />}
-
-      {/* Reply Modal (アクティブなスレッドがある場合のみ表示) */}
-      {activeThread && roomId && (
-        <ReplyModal 
-            roomId={roomId}
-            parentMessage={activeThread}
-            allMessages={messages}
-            onClose={() => setActiveThread(null)}
-        />
-      )}
-
-      {viewerIndex !== null && imageMessages[viewerIndex] && (
-        <ImageViewer
-          imageUrl={imageMessages[viewerIndex].image_url!}
-          nickname={imageMessages[viewerIndex].nickname}
-          currentIndex={viewerIndex}
-          total={imageMessages.length}
-          onClose={() => setViewerIndex(null)}
-          onNext={nextImage}
-          onPrev={prevImage}
-        />
-      )}
-    </div>
+        <div className="text-sm text-gray-500">
+          <p>💡 メンバー招待はURLをシェアするだけ</p>
+          <p>💡 ルームの削除権限は作った人だけ</p>
+        </div>
+      </div>
+    </main>
   );
 }
