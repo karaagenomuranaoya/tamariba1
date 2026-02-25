@@ -5,57 +5,48 @@ import { supabase } from '@/lib/supabase';
 import { Message } from '../types';
 
 type Props = {
-  roomId: string;
+  // roomId を削除
   parentMessage: Message;
-  allMessages: Message[]; // 全メッセージからリプライを抽出して表示
+  allMessages: Message[];
   onClose: () => void;
 };
 
 const DEFAULT_NICKNAME = 'からあげ';
 
-export default function ReplyModal({ roomId, parentMessage, allMessages, onClose }: Props) {
+export default function ReplyModal({ parentMessage, allMessages, onClose }: Props) {
   const [nickname, setNickname] = useState('');
   const [replyContent, setReplyContent] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // この親メッセージに対する返信のみを抽出
   const replies = allMessages.filter((m) => m.parent_id === parentMessage.id);
 
-  // 最新の返信が見えるようにスクロール
+  // ... (useEffect系は変更なし) ...
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [replies.length]);
 
-  // ★ 追加: マウント時に保存されたニックネームを復元（ChatInputと共有）
   useEffect(() => {
-    if (roomId) {
-      const savedName = localStorage.getItem(`tamariba_nickname_${roomId}`);
-      if (savedName) {
-        setNickname(savedName);
-      }
-    }
-  }, [roomId]);
+    const savedName = localStorage.getItem('tamariba_nickname');
+    if (savedName) setNickname(savedName);
+  }, []);
 
   const sendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyContent.trim() || isSending) return;
 
     setIsSending(true);
-
-    // ★ 追加: 送信時にニックネームを保存
-    localStorage.setItem(`tamariba_nickname_${roomId}`, nickname);
-
+    localStorage.setItem('tamariba_nickname', nickname);
     const finalNickname = nickname.trim() || DEFAULT_NICKNAME;
 
+    // room_idなしでInsert
     await supabase.from('tm_messages').insert([
       {
-        room_id: roomId,
         nickname: finalNickname,
         content: replyContent,
-        parent_id: parentMessage.id, // 親IDを指定
+        parent_id: parentMessage.id,
       },
     ]);
 
@@ -63,13 +54,13 @@ export default function ReplyModal({ roomId, parentMessage, allMessages, onClose
     setIsSending(false);
   };
 
+  // ... (return内の表示ロジックは変更なし) ...
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200" onClick={onClose}>
       <div 
         className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
           <h3 className="text-sm font-bold text-gray-700">返信スレッド</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
@@ -79,9 +70,7 @@ export default function ReplyModal({ roomId, parentMessage, allMessages, onClose
           </button>
         </div>
 
-        {/* Thread Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white" ref={scrollRef}>
-          {/* 親メッセージ（少し強調） */}
           <div className="pl-2 border-l-4 border-gray-200">
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-xs font-bold text-gray-600">{parentMessage.nickname}</span>
@@ -97,7 +86,6 @@ export default function ReplyModal({ roomId, parentMessage, allMessages, onClose
 
           <div className="border-t border-gray-100 my-2"></div>
 
-          {/* 返信一覧 */}
           {replies.length === 0 ? (
             <div className="text-center text-xs text-gray-400 py-4">まだ返信はありません</div>
           ) : (
@@ -117,7 +105,6 @@ export default function ReplyModal({ roomId, parentMessage, allMessages, onClose
           )}
         </div>
 
-        {/* Reply Input */}
         <form onSubmit={sendReply} className="p-3 border-t border-gray-100 bg-gray-50">
            <input
             type="text"

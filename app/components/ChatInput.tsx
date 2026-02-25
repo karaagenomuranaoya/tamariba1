@@ -6,11 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_NICKNAME = 'からあげ';
 
-type Props = {
-  roomId: string;
-};
-
-export default function ChatInput({ roomId }: Props) {
+// Props定義から roomId を削除
+export default function ChatInput() {
   const [nickname, setNickname] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -19,15 +16,10 @@ export default function ChatInput({ roomId }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ★ 追加: マウント時に保存されたニックネームを復元
   useEffect(() => {
-    if (roomId) {
-      const savedName = localStorage.getItem(`tamariba_nickname_${roomId}`);
-      if (savedName) {
-        setNickname(savedName);
-      }
-    }
-  }, [roomId]);
+    const savedName = localStorage.getItem('tamariba_nickname');
+    if (savedName) setNickname(savedName);
+  }, []);
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -39,11 +31,9 @@ export default function ChatInput({ roomId }: Props) {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!newMessage.trim() && !selectedImage) || !roomId) return;
+    if (!newMessage.trim() && !selectedImage) return;
 
-    // ★ 追加: 送信時にニックネームを保存（空文字の場合もそのまま保存して、次回空欄にする）
-    localStorage.setItem(`tamariba_nickname_${roomId}`, nickname);
-
+    localStorage.setItem('tamariba_nickname', nickname);
     const finalNickname = nickname.trim() || DEFAULT_NICKNAME;
     let imageUrl = null;
 
@@ -51,7 +41,8 @@ export default function ChatInput({ roomId }: Props) {
       setIsUploading(true);
       const fileExt = selectedImage.name.split('.').pop();
       const fileName = `${uuidv4()}.${fileExt}`;
-      const filePath = `${roomId}/${fileName}`;
+      // 保存パスを固定フォルダに変更
+      const filePath = `uploads/${fileName}`; 
       
       const { error: uploadError } = await supabase.storage.from('tm-images').upload(filePath, selectedImage);
       if (uploadError) {
@@ -65,9 +56,9 @@ export default function ChatInput({ roomId }: Props) {
       setIsUploading(false);
     }
 
+    // room_id を指定せずにInsert
     await supabase.from('tm_messages').insert([
       {
-        room_id: roomId,
         nickname: finalNickname,
         content: newMessage,
         image_url: imageUrl,
@@ -79,11 +70,16 @@ export default function ChatInput({ roomId }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
-
+  
+  // return部分は変更なしのため省略（そのまま使えます）
   return (
-    <div className="bg-white border-t border-gray-200 shrink-0 pb-safe">
+    <div className="bg-white border-t border-gray-200 shrink-0 pb-safe z-20">
+      {/* 以前と同じフォームの中身 */}
       <form onSubmit={sendMessage} className="flex flex-col max-w-screen-md mx-auto">
-        {selectedImage && (
+         {/* ... (中身は変更なし) ... */}
+         {/* 注意: selectedImage表示エリアや入力欄など、以前のコードをそのまま維持してください */}
+         {/* ここではスペース節約のため省略していますが、以前の return ブロック全体を使ってください */}
+         {selectedImage && (
           <div className="px-3 pt-3">
             <div className="flex items-center justify-between bg-blue-50 p-2 px-3 rounded-lg text-sm text-blue-800 border border-blue-100">
               <span className="truncate">{selectedImage.name}</span>

@@ -1,134 +1,108 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { v4 as uuidv4 } from 'uuid';
+import { Message } from './types';
+
+// Components
+import Header from './components/Header';
+import MessageList from './components/MessageList';
+import ChatInput from './components/ChatInput';
+import ImageViewer from './components/ImageViewer';
+import ReplyModal from './components/ReplyModal';
+
+// 定数: ルーム名はコード固定
+const ROOM_NAME = 'たまりば';
 
 export default function Home() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [roomName, setRoomName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [activeThread, setActiveThread] = useState<Message | null>(null);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  const generateSlug = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz';
-    const nums = '0123456789';
-    let str = '';
-    for (let i = 0; i < 3; i++) str += chars.charAt(Math.floor(Math.random() * chars.length));
-    str += '-';
-    for (let i = 0; i < 3; i++) str += nums.charAt(Math.floor(Math.random() * nums.length));
-    return str;
-  };
+  // 画像を持つメッセージのみ抽出
+  const imageMessages = messages.filter(m => m.image_url);
 
-  // ★ 追加: 「次の日本時間 午前3:00」を計算する関数
-  const getNextJst3AM = () => {
-    // 現在時刻を取得
-    const now = new Date();
-    
-    // UTC時間に変換して計算することで、ユーザーのPCのタイムゾーン設定に依存せずJSTを扱う
-    // JSTは UTC+9
-    const jstOffset = 9 * 60; 
-    const currentUtcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const currentJstTime = new Date(currentUtcTime + (jstOffset * 60000));
-
-    // JST基準で「今日の3時」を作る
-    const targetJst = new Date(currentJstTime);
-    targetJst.setHours(3, 0, 0, 0);
-
-    // もし「現在のJST」が「今日の3時」を過ぎていたら、ターゲットは「明日の3時」
-    if (currentJstTime > targetJst) {
-      targetJst.setDate(targetJst.getDate() + 1);
-    }
-
-    // 計算したJSTのターゲット時刻を、DB保存用にUTCに戻す
-    const targetUtcTimestamp = targetJst.getTime() - (jstOffset * 60000);
-    return new Date(targetUtcTimestamp).toISOString();
-  };
-
-  const createRoom = async () => {
-    setLoading(true);
-    try {
-      const slug = generateSlug();
-      const ownerToken = uuidv4();
-      
-      // デフォルト名は「たまりば」
-      const finalName = roomName.trim() || 'たまりば';
-      const expiresAt = getNextJst3AM(); // ★ 有効期限を計算
-
-      const { error } = await supabase
-        .from('tm_rooms')
-        .insert([
-          { 
-            slug: slug, 
-            owner_token: ownerToken,
-            name: finalName,
-            expires_at: expiresAt // ★ DBに追加
-          }
-        ]);
-
-      if (error) {
-        console.error('Error creating room:', error);
-        alert('エラーが発生しました。もう一度お試しください。');
-        setLoading(false);
-        return;
-      }
-
-      localStorage.setItem(`tamariba_owner_${slug}`, ownerToken);
-      
-      // 作成直後であることを伝えるパラメータ(?created=true)をつけて遷移
-      router.push(`/room/${slug}?created=true`);
-
-    } catch (err) {
-      console.error(err);
+  // 1. メッセージ取得 & リアルタイム購読
+  useEffect(() => {
+    // 過去ログ取得
+    const fetchMessages = async () => {
+      const { data } = await supabase
+        .from('tm_messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+        
+      if (data) setMessages(data);
       setLoading(false);
-    }
+    };
+    fetchMessages();
+
+    // リアルタイム受信 (room_idフィルタを削除)
+    const channel = supabase.channel('global_chat')
+      .on(
+        'postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'tm_messages' }, 
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new as Message]);
+        }
+      )
+      .subscribe();
+
+    return () => { 
+        supabase.removeChannel(channel); 
+    };
+  }, []);
+
+  // Viewer Handlers
+  const openViewer = (url: string) => {
+    const index = imageMessages.findIndex(m => m.image_url === url);
+    if (index !== -1) setViewerIndex(index);
   };
+
+  const nextImage = () => {
+    if (viewerIndex === null) return;
+    setViewerIndex((prev) => (prev! + 1) % imageMessages.length);
+  };
+
+  const prevImage = () => {
+    if (viewerIndex === null) return;
+    setViewerIndex((prev) => (prev! - 1 + imageMessages.length) % imageMessages.length);
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-dvh text-gray-500 bg-gray-50">読み込み中...</div>;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6">
-      <div className="max-w-md w-full text-center space-y-8">
-        <div>
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">たまりば</h1>
-          <p className="mt-4 text-lg text-gray-600">
-            URLひとつで、匿名・クローズド・気兼ねなし。<br />
-            登録不要のチャットルームを一瞬で作成。
-            <span className="inline-block bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-base font-bold mt-2">
-              🌙 毎日AM3:00に全員解散
-            </span>
-          </p>
-        </div>
+    <div className="flex flex-col h-dvh bg-gray-100">
+      <Header roomName={ROOM_NAME} />
 
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-          <div>
-            <label className="block text-left text-sm font-medium text-gray-700 mb-1">ルーム名（任意）</label>
-            <input
-              type="text"
-              placeholder="たまりば"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-            />
-          </div>
+      <MessageList 
+        messages={messages} 
+        onImageClick={openViewer} 
+        onReplyClick={(msg) => setActiveThread(msg)} 
+      />
 
-          <button
-            onClick={createRoom}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
-          >
-            {loading ? '作成中...' : 'たまり場を作る'}
-          </button>
-          
-          <p className="mt-4 text-xs text-gray-400">
-            ボタンを押すと即座にルームが作成され、<br />
-            専用のURLへ移動します。
-          </p>
-        </div>
+      {/* roomId を渡す必要がなくなりました */}
+      <ChatInput />
 
-        <div className="text-sm text-gray-500">
-          <p>💡 メンバー招待はURLをシェアするだけ</p>
-          <p>💡 ルームの削除権限は作った人だけ</p>
-        </div>
-      </div>
-    </main>
+      {activeThread && (
+        <ReplyModal 
+            parentMessage={activeThread}
+            allMessages={messages}
+            onClose={() => setActiveThread(null)}
+        />
+      )}
+
+      {viewerIndex !== null && imageMessages[viewerIndex] && (
+        <ImageViewer
+          imageUrl={imageMessages[viewerIndex].image_url!}
+          nickname={imageMessages[viewerIndex].nickname}
+          currentIndex={viewerIndex}
+          total={imageMessages.length}
+          onClose={() => setViewerIndex(null)}
+          onNext={nextImage}
+          onPrev={prevImage}
+        />
+      )}
+    </div>
   );
 }
