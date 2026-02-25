@@ -12,7 +12,7 @@ import ImageViewer from './components/ImageViewer';
 import ReplyModal from './components/ReplyModal';
 
 // 定数: ルーム名はコード固定
-const ROOM_NAME = 'たまりば';
+const ROOM_NAME = 'なおやくん';
 
 export default function Home() {
   const [loading, setLoading] = useState(true);

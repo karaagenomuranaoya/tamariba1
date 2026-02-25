@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
-const DEFAULT_NICKNAME = 'からあげ';
+const DEFAULT_NICKNAME = '母さん';
 
 // Props定義から roomId を削除
 export default function ChatInput() {
@@ -125,7 +125,7 @@ export default function ChatInput() {
 
           <textarea
             ref={textareaRef}
-            placeholder="メッセージ..."
+            placeholder="何かあったことを..."
             value={newMessage}
             rows={1}
             onChange={(e) => {

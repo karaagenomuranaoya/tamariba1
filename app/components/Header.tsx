@@ -11,9 +11,6 @@ export default function Header({ roomName }: Props) {
         <h1 className="font-bold text-gray-800 text-base sm:text-lg leading-tight truncate max-w-[200px] mx-auto">
           {roomName}
         </h1>
-        <p className="text-[10px] text-gray-400 font-mono mt-0.5">
-          ずっと残るチャットルーム
-        </p>
       </div>
     </header>
   );
